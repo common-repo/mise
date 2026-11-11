@@ -1,8 +1,9 @@
 # Contract tests for the bootstrap drop-in (src/script/.bootstrap/10-mise.sh)
 # that need no real mise: syntax and single-definition checks, the
 # missing-mise failure path under a stripped PATH, and a stubbed mise that
-# records its argv to cover --locked vs plain install and the shims PATH
-# export. Not distributed: consumers inherit src/ only.
+# records its argv to cover --locked vs plain install, the shims PATH
+# export, and the MISE_DATA_DIR shims override. Not distributed: consumers
+# inherit src/ only.
 10-drop-in() {
   local tmp failures=0 out rc src S R
   src="$REPO_ROOT/src/script/.bootstrap/10-mise.sh"
@@ -23,20 +24,25 @@
     cp "$src" "$R/script/.bootstrap/10-mise.sh"
     S="$R/script"
   }
-  # stub_mise — a mise executable first on PATH that records its argv
+  # stub_mise — a mise executable first on PATH that records its argv and
+  # answers `data-dir` the way real mise does (MISE_DATA_DIR, else default)
   stub_mise() {
     mkdir -p "$tmp/bin"
     cat >"$tmp/bin/mise" <<STUB
 #!/bin/sh
 printf '%s\n' "\$*" >>'$tmp/argv'
+if [ "\$1" = data-dir ]; then
+  echo "\${MISE_DATA_DIR:-\$HOME/.local/share/mise}"
+fi
 STUB
     chmod +x "$tmp/bin/mise"
     : >"$tmp/argv"
   }
-  # run <path> — bootstrap the fixture with the given PATH
+  # run <path> — bootstrap the fixture with the given PATH (and $run_env
+  # as extra env assignments for the data-dir override case)
   run() {
     rc=0
-    out="$(env -u DEBUG PATH="$1" "$S/bootstrap" 2>&1)" || rc=$?
+    out="$(env -u DEBUG ${run_env:-} PATH="$1" "$S/bootstrap" 2>&1)" || rc=$?
   }
   check() {
     local name="$1" want_rc="$2"
@@ -87,8 +93,22 @@ STUB
   run "$tmp/bin:/usr/bin:/bin"
   check "without mise.lock: mise install, then shims on PATH" 0 \
     "shims on PATH" "pass   20-shims"
-  [ "$(cat "$tmp/argv")" = "install" ] ||
-    not_ok "unlocked: mise argv was '$(cat "$tmp/argv")', wanted 'install'"
+  [ "$(head -n 1 "$tmp/argv")" = "install" ] ||
+    not_ok "unlocked: mise argv was '$(head -n 1 "$tmp/argv")', wanted 'install'"
+
+  # -- MISE_DATA_DIR set: shims come from the configured data dir ----------
+  fixture custom-data-dir
+  stub_mise
+  mkdir -p "$S/.bootstrap"
+  # A later drop-in must resolve tools through the CUSTOM data dir, not
+  # mise's default (Devin: hard-coded default shim path ignores MISE_DATA_DIR).
+  printf '20-shims() {\n  case ":$PATH:" in\n    *":%s/shims:"*) info "custom shims on PATH" ;;\n    *) return $(fail "custom data dir shims not on PATH") ;;\n  esac\n}\n' \
+    "$R/custom-data" >"$S/.bootstrap/20-shims.sh"
+  run_env="MISE_DATA_DIR=$R/custom-data"
+  run "$tmp/bin:/usr/bin:/bin"
+  run_env=""
+  check "with MISE_DATA_DIR: shims from the configured data dir" 0 \
+    "custom shims on PATH" "pass   20-shims"
 
   # -- mise present, mise.lock: locked install ------------------------------
   fixture locked
@@ -96,8 +116,8 @@ STUB
   : >"$R/mise.lock"
   run "$tmp/bin:/usr/bin:/bin"
   check "with mise.lock: mise install --locked" 0 "pass   10-mise"
-  [ "$(cat "$tmp/argv")" = "install --locked" ] ||
-    not_ok "locked: mise argv was '$(cat "$tmp/argv")', wanted 'install --locked'"
+  [ "$(head -n 1 "$tmp/argv")" = "install --locked" ] ||
+    not_ok "locked: mise argv was '$(head -n 1 "$tmp/argv")', wanted 'install --locked'"
 
   rm -rf "$tmp"
   [ "$failures" -eq 0 ] || return $(fail "$failures drop-in check(s) failed")
