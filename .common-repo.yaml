@@ -1,0 +1,32 @@
+# Local consumption — shared tooling from the upstream template plus the
+# scripts-to-rule-them-all harness for this repo's own script/ entry
+# points, then our payload. The GH_APP template-vars mirror upstream's
+# self: so the chain's release workflow gets the org bot's credentials.
+# No yaml: auto-merge on .github/workflows/ci.yaml here: the upstream
+# chain already owns that file's merges, and duplicate declarations
+# resolve nearest-wins.
+- self:
+    - repo:
+        url: https://github.com/common-repo/upstream
+        ref: v2.4.2
+    - repo:
+        url: https://github.com/common-repo/scripts-to-rule-them-all
+        ref: v0.1.5
+    - template-vars:
+        GH_APP_ID_SECRET: COMMON_REPO_BOT_CLIENT_ID
+        GH_APP_KEY_SECRET: COMMON_REPO_BOT_PRIVATE_KEY
+        GH_APP_OWNER: common-repo
+    - include: ["src/**"]
+    - rename:
+        - "^src/(.*)$": "$1"
+
+# Source API — what consumers inherit: the mise payload at the consumer
+# root, then scripts-to-rule-them-all transitively so the drop-in has a
+# harness to run in. Consumers already following the pattern keep their
+# own stubs (if-exists: preserve on that upstream's side).
+- include: ["src/**"]
+- rename:
+    - "^src/(.*)$": "$1"
+- repo:
+    url: https://github.com/common-repo/scripts-to-rule-them-all
+    ref: v0.1.5
