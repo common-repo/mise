@@ -18,11 +18,13 @@
     mise install || return $(fail "mise install failed")
   fi
 
-  # Make mise's shims resolvable for later drop-ins in this phase. Shims
-  # are just a directory on PATH — the non-interactive mechanism from
-  # https://mise.jdx.dev/dev-tools/shims.html — and exports are the
-  # sharing channel between drop-ins.
-  local shims="$HOME/.local/share/mise/shims"
+  # Make mise's shims resolvable for later drop-ins in this phase. Resolve
+  # the directory from mise itself so a custom data dir (MISE_DATA_DIR)
+  # works. Shims are just a directory on PATH — the non-interactive
+  # mechanism from https://mise.jdx.dev/dev-tools/shims.html — and exports
+  # are the sharing channel between drop-ins.
+  local shims
+  shims="$(mise data-dir 2>/dev/null || echo "$HOME/.local/share/mise")/shims"
   case ":$PATH:" in
     *":$shims:"*) ;;
     *) export PATH="$shims:$PATH" ;;
