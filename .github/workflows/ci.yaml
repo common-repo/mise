@@ -1,0 +1,44 @@
+name: CI
+on:
+  pull_request: null
+  push:
+    branches:
+    - main
+  workflow_call: null
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - name: Run prek
+      uses: j178/prek-action@44924fe9ef4a6f88253c4b6b1bf11c689d3ce53d
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - name: Install common-repo
+      uses: common-repo/setup-common-repo@887d2b31e6678fb650d1b1b6fb6097afa5528310
+      with:
+        version: v0.38.4
+    - name: Validate configuration
+      run: common-repo validate
+    - name: Check managed files
+      run: common-repo diff
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - name: Run tests
+      run: |
+        [ ! -x "script/test" ] || script/test
